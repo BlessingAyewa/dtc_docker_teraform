@@ -3,6 +3,9 @@ from dotenv import load_dotenv
 import pandas as pd
 from sqlalchemy import create_engine
 from tqdm.auto import tqdm
+import click
+
+load_dotenv()
 
 dtype = {
     "VendorID": "Int64",
@@ -33,32 +36,62 @@ password = os.getenv("DB_PASSWORD")
 host = os.getenv("DB_HOST")
 port = os.getenv("DB_PORT")
 db = os.getenv("DB_NAME")
-
-prefix = 'https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/'
-engine = create_engine('postgresql://root:root@localhost:5432/ny_taxi')
-
+year = os.getenv("DATA_YEAR")
+month = os.getenv("DATA_MONTH")
+table_name = os.getenv("DB_TABLE")
+chunksize = os.getenv("CHUNKSIZE")
 
 # print(pd.io.sql.get_schema(df, name="yellow_taxi_data", con=engine))
 
+@click.command()
+# Map the 'envvar' argument to your .env variable names
+@click.option('--user', default=user, help='Database username')
+@click.option('--password', default=password, help='Database password')
+@click.option('--host', default=host, help='Database host')
+@click.option('--port', default=port, help='Database port')
+@click.option('--db', default=db, help='Database name')
+@click.option('--table-name', default=table_name, help='Target table name')
+@click.option('--year', default=year, type=int, help='Year of data to download')
+@click.option('--month', default=month, type=int, help='Month of data to download')
+@click.option('--chunksize', default=chunksize, type=int, help='Rows per chunk')
+def run(user, password, host, port, db, table_name, year, month, chunksize):
 
-def run():
+    prefix = 'https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/'
+    engine = create_engine(f'postgresql://{user}:{password}@{host}:{port}/{db}')
+    url = prefix + f'yellow_tripdata_{year}-{month:02d}.csv.gz'
+
+    print(f"ATTEMPTING TO DOWNLOAD: {url}")
+
     df_iter = pd.read_csv(
-        prefix + 'yellow_tripdata_2021-01.csv.gz',
+        url,
         dtype=dtype,
         parse_dates=parse_dates,
         iterator=True,
-        chunksize=100000
+        chunksize=chunksize
     )
 
+    # Get first chunk
+    first_chunk = next(df_iter)
+
+    # Create table AND insert first chunk immediately
+    first_chunk.to_sql(
+         name=table_name, 
+         con=engine, 
+         if_exists="replace"
+        )
+    
+    print("Table created and first chunk inserted")
+
+    # Insert the rest
     for df_chunk in tqdm(df_iter):
-        # print(len(df_chunk))
-        df_chunk.to_sql(name='yellow_taxi_data', con=engine, if_exists='append')
+
+        df_chunk.to_sql(
+            name=table_name, 
+            con=engine, 
+            if_exists='append'
+        )
+
         print("Inserted chunk:", len(df_chunk))
-
-
 
 if __name__ == "__main__":
     run()
-
-
-
