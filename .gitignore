@@ -8,7 +8,7 @@ __pycache__/
 .env
 *.csv
 *.txt
-
+my-creds.json
 # Distribution / packaging
 .Python
 build/
